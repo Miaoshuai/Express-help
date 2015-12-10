@@ -6,7 +6,7 @@
     > Created Time: 2015年12月08日 星期二 16时50分43秒
  =======================================================*/
 #include <muduo/net/http/HttpRequest.h>
-#include <muduo/net/http/HttpResponse.h>
+
 #include <muduo/base/StringPiece.h>
 
 #include <string>
@@ -16,6 +16,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <string.h>
+#include <muduo/net/http/HttpResponse.h>
 
 //从字符串中截取配置名字和配置内容
 std::pair<std::string,std::string> intercept(const char *str)
@@ -27,9 +29,10 @@ std::pair<std::string,std::string> intercept(const char *str)
     {
         if(str[i] == ' ')
         {
-            std::string s1(str,&str[i - 1]);
+            std::string s1(str,&str[i]);
             option.first = s1;
             std::string s2(&str[i] + 3);
+            s2.resize(s2.size() - 1);
             option.second = s2;
             return option;   
         }
@@ -49,9 +52,11 @@ std::pair<std::string,std::string> extract(const char *str)
     {
         if(str[i] == ' ')
         {
-            std::string s1(str,&str[i - 1]);
+            std::string s1(str,&str[i]);
             value.first = s1;
-            std::string s2(&str[i] + 3);
+            std::string s2(&str[i] + 5);
+            
+            s2.resize(s2.size() - 1);
             value.second = s2;
             return value;
         }
@@ -112,7 +117,7 @@ std::string getMessageFromFile(const std::string &key)
             if(option.first == key)
             {
                 return option.second;
-            }       
+            }
         }
         bzero(&buf,sizeof(buf));
     }
@@ -132,11 +137,15 @@ std::string getContentType(const std::string path)
         {
             std::string t(&path[i],path.size() - i + 1);
             key = t;
+            break;
         }   
     }
+    key.resize(key.size() - 1);
+
     auto m = getAllMIME();
 
     auto it = m.find(key);
+    
     if(it == m.end())
     {
         printf("表中没有此后缀名\n");
@@ -147,28 +156,19 @@ std::string getContentType(const std::string path)
     }
 }
 
-std::string getFileContent(int fd)
-{
-    char body[1024*1024*10];
-    int ret = read(fd,body,sizeof(body));
-    if(ret < 0)
-    {
-        printf("读文件出错\n");
-    }
-    close(fd);
-    return body;
-}
+
 
 //http服务器回调
 void httpCallback(const muduo::net::HttpRequest &req,muduo::net::HttpResponse *resp)
 {
     std::string site = getMessageFromFile("webHome");//站点跟目录
-    
     //获得要获取文件的描述符
+    std::string st(req.path().data());
     std::string path(site);
-    path = path + req.path().data();
+    path = path + st; 
+    std::cout<<path<<std::endl;
     int fd = open(path.c_str(),O_RDONLY);
-    //请求的资源不存在
+    printf("\nfd = %d\n",fd);
     if(fd == -1)
         {
         resp->setStatusCode(muduo::net::HttpResponse::k404NotFound);
@@ -184,6 +184,8 @@ void httpCallback(const muduo::net::HttpRequest &req,muduo::net::HttpResponse *r
         resp->setStatusMessage("OK");
         resp->setContentType(getContentType(req.path().data()).c_str());
         resp->addHeader("Server","shreck");
-        resp->setBody(getFileContent(fd).c_str());       
+        resp->setFd(fd);
+        resp->fun();
+        
     }    
 }

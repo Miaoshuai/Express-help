@@ -35,13 +35,14 @@ class HttpServer : boost::noncopyable
   HttpServer(EventLoop* loop,
              const InetAddress& listenAddr,
              const string& name,
-             TcpServer::Option option = TcpServer::kNoReusePort);
+             TcpServer::Option option = TcpServer::kReusePort);
 
   ~HttpServer();  // force out-line dtor, for scoped_ptr members.
 
   EventLoop* getLoop() const { return server_.getLoop(); }
 
   /// Not thread safe, callback be registered before calling start().
+  //设置自定义http回调
   void setHttpCallback(const HttpCallback& cb)
   {
     httpCallback_ = cb;

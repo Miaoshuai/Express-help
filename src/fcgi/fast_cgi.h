@@ -14,178 +14,107 @@
 
 typedef struct 
 {
-    unsigned char version;
-    unsigned char type;
-    unsigned char requestIdB1;
-    unsigned char requestIdB0;
-    unsigned char contentLengthB1;
+    unsigned char version;              //版本
+    unsigned char type;                 //操作类型
+    unsigned char requestIdB1;          //请求id
+    unsigned char requestIdB0;          
+    unsigned char contentLengthB1;      //内容长度
     unsigned char contentLengthB0;
-    unsigned char paddingLength;
-    unsigned char reserved;
+    unsigned char paddingLength;        //填充字节的长度
+    unsigned char reserved;             //保留字节
 }FCGI_Header;
 
+//允许传送的最大数据65536
 #define FCGI_MAX_LENGTH 0xffff
 
-/*
-
-* Number of bytes in a FCGI_Header.  Future versions of the protocol
-
-* will not reduce this number.
-
-*/
-
+//上述FCGI_HEADER长度
 #define FCGI_HEADER_LEN  8
 
-/*
 
-* Value for version component of FCGI_Header
-
-*/
-
+//FCGI的版本
 #define FCGI_VERSION_1           1
 
-/*
-
-* Values for type component of FCGI_Header
-
-*/
-
-#define FCGI_BEGIN_REQUEST       1
-
-#define FCGI_ABORT_REQUEST       2
-
-#define FCGI_END_REQUEST         3
-
-#define FCGI_PARAMS              4
-
-#define FCGI_STDIN               5
-
-#define FCGI_STDOUT              6
-
-#define FCGI_STDERR              7
-
+//上述FCGI_Header中type的具体值
+#define FCGI_BEGIN_REQUEST       1      //开始请求
+#define FCGI_ABORT_REQUEST       2      //异常终止请求
+#define FCGI_END_REQUEST         3      //正常终止请求
+#define FCGI_PARAMS              4      //传递参数
+#define FCGI_STDIN               5      //POST内容传递
+#define FCGI_STDOUT              6      //正常响应内容
+#define FCGI_STDERR              7      //错误输出
 #define FCGI_DATA                8
-
 #define FCGI_GET_VALUES          9
-
 #define FCGI_GET_VALUES_RESULT  10
-
-#define FCGI_UNKNOWN_TYPE       11
-
+#define FCGI_UNKNOWN_TYPE       11      //通知webserver所请求type非正常类型
 #define FCGI_MAXTYPE (FCGI_UNKNOWN_TYPE)
 
-/*
 
-* Value for requestId component of FCGI_Header
-
-*/
-
+//空的请求ID
 #define FCGI_NULL_REQUEST_ID     0
 
-typedef struct {
+typedef struct 
+{
+    unsigned char roleB1;       //web服务器所期望php-fpm扮演的角色，具体取值下面有
+    unsigned char roleB0;
+    unsigned char flags;        //确定php-fpm处理完一次请求之后是否关闭
+    unsigned char reserved[5];  //保留字段
+}FCGI_BeginRequestBody;
 
-unsigned char roleB1;
+typedef struct 
+{
+    FCGI_Header header;         //webserver请求php-fpm的请求头
+    FCGI_BeginRequestBody body;//请求体
 
-unsigned char roleB0;
+}FCGI_BeginRequestRecord;
 
-unsigned char flags;
 
-unsigned char reserved[5];
+//webserver期望应用扮演的角色
+#define FCGI_KEEP_CONN  1       //如果为0则处理完请求应用就关闭，否则不关闭
+#define FCGI_RESPONDER  1       //接受http关联的所有信息,并产生http响应，接受来自webserver的PARAMS环境变量
+#define FCGI_AUTHORIZER 2       //对于认证的会关联其http请求,未认证的则关闭请求
+#define FCGI_FILTER     3       //过滤web服务器中的额外数据流，并产生过滤后的http响应
 
-} FCGI_BeginRequestBody;
+typedef struct 
+{
+    unsigned char appStatusB3;      //结束状态，0为正常
+    unsigned char appStatusB2;
+    unsigned char appStatusB1;
+    unsigned char appStatusB0;
+    unsigned char protocolStatus;   //协议状态
+    unsigned char reserved[3];
+}FCGI_EndRequestBody;
 
-typedef struct {
+typedef struct 
+{
+    FCGI_Header header;         //结束头
+    FCGI_EndRequestBody body;   //结束体
+}FCGI_EndRequestRecord;
 
-FCGI_Header header;
 
-FCGI_BeginRequestBody body;
+//几种结束状态
+#define FCGI_REQUEST_COMPLETE 0     //正常结束
+#define FCGI_CANT_MPX_CONN    1     //拒绝新请求，单线程
+#define FCGI_OVERLOADED       2     //拒绝新请求，应用负载了
+#define FCGI_UNKNOWN_ROLE     3     //webserver指定了一个应用不能识别的角色
 
-} FCGI_BeginRequestRecord;
 
-/*
 
-* Mask for flags component of FCGI_BeginRequestBody
+#define FCGI_MAX_CONNS  "FCGI_MAX_CONNS"    //可接受的并发传输线路的最大值
 
-*/
+#define FCGI_MAX_REQS   "FCGI_MAX_REQS"     //可接受并发请求的最大值
 
-#define FCGI_KEEP_CONN  1
+#define FCGI_MPXS_CONNS "FCGI_MPXS_CONNS"   //是否多路复用，其状态值也不同
 
-/*
+typedef struct 
+{
+    unsigned char type;     
+    unsigned char reserved[7];
+}FCGI_UnknownTypeBody;
 
-* Values for role component of FCGI_BeginRequestBody
+typedef struct 
+{
+    FCGI_Header header;
+    FCGI_UnknownTypeBody body;
+}FCGI_UnknownTypeRecord;
 
-*/
-
-#define FCGI_RESPONDER  1
-
-#define FCGI_AUTHORIZER 2
-
-#define FCGI_FILTER     3
-
-typedef struct {
-
-unsigned char appStatusB3;
-
-unsigned char appStatusB2;
-
-unsigned char appStatusB1;
-
-unsigned char appStatusB0;
-
-unsigned char protocolStatus;
-
-unsigned char reserved[3];
-
-} FCGI_EndRequestBody;
-
-typedef struct {
-
-FCGI_Header header;
-
-FCGI_EndRequestBody body;
-
-} FCGI_EndRequestRecord;
-
-/*
-
-* Values for protocolStatus component of FCGI_EndRequestBody
-
-*/
-
-#define FCGI_REQUEST_COMPLETE 0
-
-#define FCGI_CANT_MPX_CONN    1
-
-#define FCGI_OVERLOADED       2
-
-#define FCGI_UNKNOWN_ROLE     3
-
-/*
-
-* Variable names for FCGI_GET_VALUES / FCGI_GET_VALUES_RESULT records
-
-*/
-
-#define FCGI_MAX_CONNS  "FCGI_MAX_CONNS"
-
-#define FCGI_MAX_REQS   "FCGI_MAX_REQS"
-
-#define FCGI_MPXS_CONNS "FCGI_MPXS_CONNS"
-
-typedef struct {
-
-unsigned char type;
-
-unsigned char reserved[7];
-
-} FCGI_UnknownTypeBody;
-
-typedef struct {
-
-FCGI_Header header;
-
-FCGI_UnknownTypeBody body;
-
-} FCGI_UnknownTypeRecord;
-
-#endif   /* _FASTCGI_H */
+#endif

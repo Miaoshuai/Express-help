@@ -14,6 +14,6 @@
 std::pair<std::string,std::string> intercept(const char *str);
 
 //获取key字符串对应在配置文件中的value
-std::string getMessageFromFile(std::string key);
+std::string getMessageFromFile(const std::string &key);
 
 #endif

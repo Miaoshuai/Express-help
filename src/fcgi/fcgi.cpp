@@ -17,11 +17,14 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <errno.h>
+#include <string.h>
+#include <stdio.h>
 
 FastCgi::FastCgi()
 {
     sockfd_ = 0;
     requestId_ = 0;
+    flag_ = 0;
 }
 
 
@@ -41,13 +44,15 @@ FCGI_Header FastCgi::makeHeader(int type,int requestId,int contentLength,int pad
     
     header.requestIdB1 = (unsigned char)((requestId >> 8) & 0xff);  //用连个字段保存请求ID
     header.requestIdB0 = (unsigned char)(requestId & 0xff);
-    
+  
     header.contentLengthB1 = (unsigned char)((contentLength >> 8) & 0xff);//用俩个字段保存内容长度
     header.contentLengthB0 = (unsigned char)(contentLength & 0xff);
 
     header.paddingLength = (unsigned char)paddingLength;        //填充字节的长度
 
     header.reserved = 0;    //保留字节赋为0
+
+    return header;
 }
 
 
@@ -60,7 +65,9 @@ FCGI_BeginRequestBody FastCgi::makeBeginRequestBody(int role,int keepConnection)
 
     body.flags = (unsigned char)((keepConnection) ? FCGI_KEEP_CONN : 0);//大于0常连接，否则短连接
 
-    bzero(&body,sizeof(body));
+    bzero(&body.reserved,sizeof(body.reserved));
+
+    return body;
 }
 
 
@@ -120,7 +127,7 @@ std::string FastCgi::getIpFromConf(void)
 }
 
 
-int FastCgi::startConnect(void)
+void FastCgi::startConnect(void)
 {
     int sockfd;
     struct sockaddr_in server_address;
@@ -140,7 +147,7 @@ int FastCgi::startConnect(void)
     int result = connect(sockfd,(struct sockaddr *)&server_address,sizeof(server_address));
     assert(result >= 0);
 
-    return sockfd;
+    sockfd_ = sockfd;
 }
 
 
@@ -153,12 +160,13 @@ bool FastCgi::sendStartRequestRecord(void)
 
     int ret = write(sockfd_,(char *)&beginRecord,sizeof(beginRecord));
     assert(ret == sizeof(beginRecord));
+    return true;
 }
 
 
 bool FastCgi::sendParams(std::string name,std::string value)
 {
-    char bodyBuff[PARAMS_BUFF_LEN];
+    unsigned char bodyBuff[PARAMS_BUFF_LEN];
     
     bzero(bodyBuff,sizeof(bodyBuff));
     
@@ -168,7 +176,7 @@ bool FastCgi::sendParams(std::string name,std::string value)
     makeNameValueBody(name,name.size(),value,value.size(),bodyBuff,&bodyLen);
     
     FCGI_Header nameValueHeader;
-    nameValueHeader = makeHeader(FCGI_PARAMS,requestId,bodyLen,0);
+    nameValueHeader = makeHeader(FCGI_PARAMS,requestId_,bodyLen,0);
 
     int nameValueRecordLen = bodyLen + FCGI_HEADER_LEN;
     char nameValueRecord[nameValueRecordLen];
@@ -197,7 +205,7 @@ bool FastCgi::sendEndRequestRecord(void)
 }
 
 
-bool readFromPhp(void)
+bool FastCgi::readFromPhp(void)
 {
     FCGI_Header responderHeader;
     char content[CONTENT_BUFF_LEN];
@@ -215,7 +223,9 @@ bool readFromPhp(void)
             //读取获取的内容
             ret = read(sockfd_,content,contentLen);
             assert(ret == contentLen);
-            fprintf(stdout,"%s\n",content);
+            //fprintf(stdout,"%s\n",content);
+            //printf("ret = %d\n",ret);
+            getHtmlFromContent(content);
 
             //跳过填充部分
             if(responderHeader.paddingLength > 0)
@@ -230,7 +240,7 @@ bool readFromPhp(void)
             bzero(content,CONTENT_BUFF_LEN);
 
             ret = read(sockfd_,content,contentLen);
-            assert(count == contentLen);
+            assert(ret == contentLen);
 
             fprintf(stdout,"error:%s\n",content);
 
@@ -250,11 +260,43 @@ bool readFromPhp(void)
             ret = read(sockfd_,&endRequest,sizeof(endRequest));
             assert(ret == sizeof(endRequest));
 
-            fprintf(stdout,"endRequest:appStatus:%d\tprotocolStatus:%d\n",(endRequest.appStatusB3 << 24) + (endRequest.appStatusB2 << 16)
-                    + (endRequest.appStatusB1 << 8) + (endRequest.appStatusB0));
+            //fprintf(stdout,"endRequest:appStatus:%d\tprotocolStatus:%d\n",(endRequest.appStatusB3 << 24) + (endRequest.appStatusB2 << 16)
+              //      + (endRequest.appStatusB1 << 8) + (endRequest.appStatusB0),endRequest.protocolStatus);
         }
     }
+    return true;
 }
 
 
+char *FastCgi::findStartHtml(char *content)
+{
+    for(;*content != '\0';content++)
+    {
+        
+        if(*content == '<')
+            return content;
+    }
 
+    return NULL;
+}
+
+void FastCgi::getHtmlFromContent(char *content)
+{
+    char *pt;   //保存html内容开始位置
+
+    if(1 == flag_)   //读取到的content是html内容
+    {
+        printf("%s",content);   
+    }
+    else
+    {
+        if((pt = findStartHtml(content)) != NULL)
+        {
+            flag_ = 1;
+            for(char* i = pt;*i != '\0';i++)
+            {
+                printf("%c",*i);
+            }        
+        }          
+    }    
+}

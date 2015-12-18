@@ -8,6 +8,7 @@
 
 #include <string>
 #include "tools.h"
+#include <string.h>
 
 //从字符串中截取配置名字和配置内容
 std::pair<std::string,std::string> intercept(const char *str)
